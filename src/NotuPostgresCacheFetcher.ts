@@ -4,15 +4,15 @@ import { mapAttrTypeFromDb, mapIntToColor } from './SQLMappings';
 
 export class NotuPostgresCacheFetcher {
 
-    private _connectionFactory: () => PostgresConnection;
+    private _connectionFactory: () => Promise<PostgresConnection>;
 
-    constructor(connectionFactory: () => PostgresConnection) {
+    constructor(connectionFactory: () => Promise<PostgresConnection>) {
         this._connectionFactory = connectionFactory;
     }
 
 
     async getSpacesData(): Promise<Array<any>> {
-        const connection = this._connectionFactory();
+        const connection = await this._connectionFactory();
         try {
             return (await connection
                 .run('SELECT id, name, version FROM Space;'))
@@ -30,7 +30,7 @@ export class NotuPostgresCacheFetcher {
 
 
     async getTagsData(): Promise<Array<any>> {
-        const connection = this._connectionFactory();
+        const connection = await this._connectionFactory();
         try {
             const tags = (await connection
                 .run('SELECT n.id, t.name, n.spaceId, t.color, t.isPublic FROM Note n INNER JOIN Tag t ON n.id = t.id;'))
@@ -58,7 +58,7 @@ export class NotuPostgresCacheFetcher {
 
 
     async getAttrsData(): Promise<Array<any>> {
-        const connection = this._connectionFactory();
+        const connection = await this._connectionFactory();
         try {
             return (await connection
                 .run('SELECT id, name, description, spaceId, type, color FROM Attr;'))

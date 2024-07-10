@@ -9,11 +9,11 @@ import { buildNotesQuery } from './PostgresQueryBuilder';
  */
 export class NotuPostgresClient {
 
-    private _connectionFactory: () => PostgresConnection;
+    private _connectionFactory: () => Promise<PostgresConnection>;
     
     private _cache: NotuCache;
 
-    constructor(connectionFactory: () => PostgresConnection, cache: NotuCache) {
+    constructor(connectionFactory: () => Promise<PostgresConnection>, cache: NotuCache) {
         this._connectionFactory = connectionFactory;
         this._cache = cache;
     }
@@ -24,12 +24,12 @@ export class NotuPostgresClient {
     }
 
     async setup(): Promise<void> {
-        const connection = this._connectionFactory();
+        const connection = await this._connectionFactory();
         try {
-            if (!(await connection.run(`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'Note');`))) {
+            if (!(await connection.run(`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'note');`)).rows[0][0]) {
                 await connection.run(
                     `CREATE TABLE Space (
-                        id INT NOT NULL PRIMARY KEY SERIAL,
+                        id SERIAL NOT NULL PRIMARY KEY,
                         name VARCHAR(25) NOT NULL,
                         version VARCHAR(10) NOT NULL
                     )`
@@ -37,7 +37,7 @@ export class NotuPostgresClient {
                 
                 await connection.run(
                     `CREATE TABLE Note (
-                        id INT NOT NULL PRIMARY KEY SERIAL,
+                        id SERIAL NOT NULL PRIMARY KEY,
                         spaceId INT NOT NULL,
                         text TEXT NOT NULL,
                         date TIMESTAMP NOT NULL,
@@ -72,7 +72,7 @@ export class NotuPostgresClient {
     
                 await connection.run(
                     `CREATE TABLE Attr (
-                        id INT NOT NULL PRIMARY KEY SERIAL,
+                        id SERIAL NOT NULL PRIMARY KEY,
                         spaceId INT NOT NULL,
                         name VARCHAR(50) NOT NULL,
                         description VARCHAR(256) NOT NULL,
@@ -112,7 +112,7 @@ export class NotuPostgresClient {
         if (space.isClean)
             return Promise.resolve();
 
-        const connection = this._connectionFactory();
+        const connection = await this._connectionFactory();
         try {
             if (space.isNew) {
                 space.id = await connection.run(
@@ -147,7 +147,7 @@ export class NotuPostgresClient {
         if (attr.isClean)
             return Promise.resolve();
 
-        const connection = this._connectionFactory();
+        const connection = await this._connectionFactory();
         try {
             if (attr.isNew) {
                 attr.id = await connection.run(
@@ -199,7 +199,7 @@ export class NotuPostgresClient {
     }
 
     private async _getNotesFromQuery(query: string): Promise<Array<any>> {
-        const connection = this._connectionFactory();
+        const connection = await this._connectionFactory();
         try {
             const notesMap = new Map<number, any>();
             const notes = (await connection.run(query)).map(x => {
@@ -258,7 +258,7 @@ export class NotuPostgresClient {
 
         query = 'SELECT COUNT(*) AS cnt' + this._prepareQuery(query, space).substring(query.indexOf(' FROM '));
 
-        const connection = this._connectionFactory();
+        const connection = await this._connectionFactory();
         try {
             return await connection.run(query)['cnt'];
         }
@@ -269,7 +269,7 @@ export class NotuPostgresClient {
 
 
     async saveNotes(notes: Array<Note>): Promise<Array<any>> {
-        const connection = this._connectionFactory();
+        const connection = await this._connectionFactory();
         try {
             for (const note of notes) {
                 if (note.isNew) {
