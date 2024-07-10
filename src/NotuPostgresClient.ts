@@ -1,4 +1,4 @@
-import { mapAttrTypeFromDb, mapAttrTypeToDb, mapColorToInt, mapDateToNumber, mapNumberToDate } from './SQLMappings';
+import { mapAttrTypeFromDb, mapAttrTypeToDb, mapColorToInt } from './SQLMappings';
 import { PostgresConnection } from './PostgresConnection';
 import { Attr, Note, NoteAttr, NoteTag, NotuCache, Space, Tag, parseQuery } from 'notu';
 import { buildNotesQuery } from './PostgresQueryBuilder';
@@ -26,21 +26,21 @@ export class NotuPostgresClient {
     async setup(): Promise<void> {
         const connection = this._connectionFactory();
         try {
-            if (!(await connection.run(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'Note';`))) {
+            if (!(await connection.run(`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'Note');`))) {
                 await connection.run(
                     `CREATE TABLE Space (
-                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                        name TEXT NOT NULL,
-                        version TEXT NOT NULL
+                        id INT NOT NULL PRIMARY KEY SERIAL,
+                        name VARCHAR(25) NOT NULL,
+                        version VARCHAR(10) NOT NULL
                     )`
                 );
                 
                 await connection.run(
                     `CREATE TABLE Note (
-                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                        spaceId INTEGER NOT NULL,
+                        id INT NOT NULL PRIMARY KEY SERIAL,
+                        spaceId INT NOT NULL,
                         text TEXT NOT NULL,
-                        date INTEGER NOT NULL,
+                        date TIMESTAMP NOT NULL,
                         FOREIGN KEY (spaceId) REFERENCES Space(id) ON DELETE CASCADE
                     );`
                 );
@@ -49,11 +49,10 @@ export class NotuPostgresClient {
     
                 await connection.run(
                     `CREATE TABLE Tag (
-                        id INTEGER NOT NULL,
-                        name TEXT NOT NULL,
-                        color INTEGER NULL,
-                        isPublic INTEGER NOT NULL,
-                        PRIMARY KEY (id),
+                        id INT NOT NULL PRIMARY KEY,
+                        name VARCHAR(50) NOT NULL,
+                        color INT NULL,
+                        isPublic BOOL NOT NULL,
                         FOREIGN KEY (id) REFERENCES Note(id) ON DELETE CASCADE
                     );`
                 );
@@ -61,8 +60,8 @@ export class NotuPostgresClient {
     
                 await connection.run(
                     `CREATE TABLE NoteTag (
-                        noteId INTEGER NOT NULL,
-                        tagId INTEGER NOT NULL,
+                        noteId INT NOT NULL,
+                        tagId INT NOT NULL,
                         PRIMARY KEY (noteId, tagId),
                         FOREIGN KEY (noteId) REFERENCES Note(id) ON DELETE CASCADE,
                         FOREIGN KEY (tagId) REFERENCES Tag(id) ON DELETE CASCADE
@@ -73,12 +72,12 @@ export class NotuPostgresClient {
     
                 await connection.run(
                     `CREATE TABLE Attr (
-                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                        spaceId INTEGER NOT NULL,
-                        name TEXT NOT NULL,
-                        description TEXT NOT NULL,
-                        type INTEGER NOT NULL,
-                        color INTEGER NULL,
+                        id INT NOT NULL PRIMARY KEY SERIAL,
+                        spaceId INT NOT NULL,
+                        name VARCHAR(50) NOT NULL,
+                        description VARCHAR(256) NOT NULL,
+                        type SMALLINT NOT NULL,
+                        color INT NULL,
                         FOREIGN KEY (spaceId) REFERENCES Space(id) ON DELETE CASCADE
                     );`
                 );
@@ -86,10 +85,10 @@ export class NotuPostgresClient {
     
                 await connection.run(
                     `CREATE TABLE NoteAttr (
-                        noteId INTEGER NOT NULL,
-                        attrId INTEGER NOT NULL,
-                        value TEXT NOT NULL,
-                        tagId INTEGER NULL,
+                        noteId INT NOT NULL,
+                        attrId INT NOT NULL,
+                        value VARCHAR(1000) NOT NULL,
+                        tagId INT NULL,
                         PRIMARY KEY (noteId, attrId, tagId),
                         FOREIGN KEY (noteId) REFERENCES Note(id) ON DELETE CASCADE,
                         FOREIGN KEY (attrId) REFERENCES Attr(id) ON DELETE CASCADE,
@@ -117,21 +116,21 @@ export class NotuPostgresClient {
         try {
             if (space.isNew) {
                 space.id = await connection.run(
-                    'INSERT INTO Space (name, version) VALUES (?, ?) RETURNING id;',
+                    'INSERT INTO Space (name, version) VALUES ($1, $2) RETURNING id;',
                     space.name, space.version
                 ) as number;
                 space.clean();
             }
             else if (space.isDirty) {
                 await connection.run(
-                    'UPDATE Space SET name = ?, version = ? WHERE id = ?;',
+                    'UPDATE Space SET name = $1, version = $2 WHERE id = $3;',
                     space.name, space.version, space.id
                 );
                 space.clean();
             }
             else if (space.isDeleted) {
                 await connection.run(
-                    'DELETE FROM Space WHERE id = ?;',
+                    'DELETE FROM Space WHERE id = $1;',
                     space.id
                 );
             }
@@ -152,21 +151,21 @@ export class NotuPostgresClient {
         try {
             if (attr.isNew) {
                 attr.id = await connection.run(
-                    'INSERT INTO Attr (spaceId, name, description, type, color) VALUES (?, ?, ?, ?, ?) RETURNING id;',
+                    'INSERT INTO Attr (spaceId, name, description, type, color) VALUES ($1, $2, $3, $4, $5) RETURNING id;',
                     attr.space.id, attr.name, attr.description, mapAttrTypeToDb(attr.type), mapColorToInt(attr.color)
                 ) as number;
                 attr.clean();
             }
             else if (attr.isDirty) {
                 await connection.run(
-                    'UPDATE Attr SET spaceId = ?, name = ?, description = ?, type = ?, color = ? WHERE id = ?;',
+                    'UPDATE Attr SET spaceId = $1, name = $2, description = $3, type = $4, color = $5 WHERE id = $6;',
                     attr.space.id, attr.name, attr.description, mapAttrTypeToDb(attr.type), mapColorToInt(attr.color), attr.id
                 );
                 attr.clean();
             }
             else if (attr.isDeleted) {
                 await connection.run(
-                    'DELETE FROM Attr WHERE id = ?;',
+                    'DELETE FROM Attr WHERE id = $1;',
                     attr.id
                 );
             }
@@ -207,7 +206,7 @@ export class NotuPostgresClient {
                 const note = {
                     state: 'CLEAN',
                     id: x.id,
-                    date: mapNumberToDate(x.date),
+                    date: x.date,
                     text: x.text,
                     spaceId: x.spaceId,
                     ownTag: null,
@@ -275,21 +274,21 @@ export class NotuPostgresClient {
             for (const note of notes) {
                 if (note.isNew) {
                     note.id = await connection.run(
-                        'INSERT INTO Note (date, text, spaceId) VALUES (?, ?, ?) RETURNING id;',
-                        mapDateToNumber(note.date), note.text, note.space.id
+                        'INSERT INTO Note (date, text, spaceId) VALUES ($1, $2, $3) RETURNING id;',
+                        note.date, note.text, note.space.id
                     ) as number;
                     note.clean();
                 }
                 else if (note.isDirty) {
                     await connection.run(
-                        'UPDATE Note SET date = ?, text = ?, spaceId = ? WHERE id = ?;',
-                        mapDateToNumber(note.date), note.text, note.space.id, note.id
+                        'UPDATE Note SET date = $1, text = $2, spaceId = $3 WHERE id = $4;',
+                        note.date, note.text, note.space.id, note.id
                     );
                     note.clean();
                 }
                 else if (note.isDeleted) {
                     await connection.run(
-                        'DELETE FROM Note WHERE id = ?;',
+                        'DELETE FROM Note WHERE id = $1;',
                         note.id
                     );
                 }
@@ -320,21 +319,21 @@ export class NotuPostgresClient {
     private async _saveTag(tag: Tag, connection: PostgresConnection): Promise<void> {
         if (tag.isNew) {
             await connection.run(
-                'INSERT INTO Tag (id, name, color, isPublic) VALUES (?, ?, ?, ?);',
+                'INSERT INTO Tag (id, name, color, isPublic) VALUES ($1, $2, $3, $4);',
                 tag.id, tag.name, mapColorToInt(tag.color), tag.isPublic ? 1 : 0
             );
             tag.clean();
         }
         else if (tag.isDirty) {
             await connection.run(
-                'UPDATE Tag SET name = ?, color = ?, isPublic = ? WHERE id = ?;',
+                'UPDATE Tag SET name = $1, color = $2, isPublic = $3 WHERE id = $4;',
                 tag.name, mapColorToInt(tag.color), tag.isPublic ? 1 : 0, tag.id
             );
             tag.clean();
         }
         else if (tag.isDeleted) {
             await connection.run(
-                'DELETE Tag WHERE id = ?',
+                'DELETE Tag WHERE id = $1',
                 tag.id
             );
         }
@@ -345,7 +344,7 @@ export class NotuPostgresClient {
         const inserts = noteTags.filter(x => x.isNew);
 
         if (inserts.length > 0) {
-            let command = 'INSERT INTO NoteTag (noteId, tagId) VALUES ' + inserts.map(x => '(?, ?)').join(', ');
+            let command = 'INSERT INTO NoteTag (noteId, tagId) VALUES ' + inserts.map((x, idx) => `($${(idx * 2) + 1}, $${(idx * 2) + 2})`).join(', ');
             let args = [];
             for (const insert of inserts) {
                 args.push(noteId, insert.tag.id);
@@ -357,7 +356,7 @@ export class NotuPostgresClient {
 
     private async _deleteNoteTags(noteId: number, noteTagsPendingDeletion: Array<NoteTag>, connection: PostgresConnection): Promise<void> {
         if (noteTagsPendingDeletion.length > 0) {
-            let command = `DELETE FROM NoteTag WHERE noteId = ? AND tagId IN (${noteTagsPendingDeletion.map(x => x.tag.id).join(', ')})`;
+            let command = `DELETE FROM NoteTag WHERE noteId = $1 AND tagId IN (${noteTagsPendingDeletion.map(x => x.tag.id).join(', ')})`;
             let args = [noteId];
             await connection.run(command, ...args);
         }
@@ -369,7 +368,7 @@ export class NotuPostgresClient {
         const updates = noteAttrs.filter(x => x.isDirty);
 
         if (inserts.length > 0) {
-            let command = 'INSERT INTO NoteAttr (noteId, attrId, value, tagId) VALUES ' + inserts.map(x => '(?, ?, ?, ?)').join(', ');
+            let command = 'INSERT INTO NoteAttr (noteId, attrId, value, tagId) VALUES ' + inserts.map((x, idx) => `($${(idx * 4) + 1}, $${(idx * 4) + 2}, $${(idx * 4) + 3}, $${(idx * 4) + 4})`).join(', ');
             let args = [];
             for (const insert of inserts) {
                 args.push(noteId, insert.attr.id, this._convertAttrValueToDb(insert), insert.tag?.id ?? null);
@@ -379,7 +378,7 @@ export class NotuPostgresClient {
         }
         for (const update of updates) {
             await connection.run(
-                'UPDATE NoteAttr SET value = ? WHERE noteId = ? AND attrId = ? AND COALESCE(tagId, 0) = ?;',
+                'UPDATE NoteAttr SET value = $1 WHERE noteId = $2 AND attrId = $3 AND COALESCE(tagId, 0) = $4;',
                 this._convertAttrValueToDb(update), noteId, update.attr.id, update.tag?.id ?? 0
             );
             update.clean();
@@ -388,7 +387,7 @@ export class NotuPostgresClient {
 
     private async _deleteNoteAttrs(noteId: number, noteAttrsForDeletion: Array<NoteAttr>, connection: PostgresConnection): Promise<void> {
         if (noteAttrsForDeletion.length > 0) {
-            let command = `DELETE FROM NoteAttr WHERE noteId = ? AND (${noteAttrsForDeletion.map(x => '(attrId = ? AND COALESCE(tagId, 0) = ?)').join(' OR ')})`;
+            let command = `DELETE FROM NoteAttr WHERE noteId = $1 AND (${noteAttrsForDeletion.map((x, idx) => `(attrId = $${(idx * 2) + 2} AND COALESCE(tagId, 0) = $${(idx * 2) + 3})`).join(' OR ')})`;
             let args = [noteId];
             for (const del of noteAttrsForDeletion)
                 args.push(del.attr.id, del.tag?.id ?? 0);
@@ -416,7 +415,7 @@ export class NotuPostgresClient {
             const dateValue = new Date(noteAttr.value);
             if (!(noteAttr.value instanceof Date))
                 noteAttr.value = dateValue;
-            return mapDateToNumber(dateValue);
+            return dateValue;
         }
         return noteAttr.value;
     }
@@ -425,7 +424,7 @@ export class NotuPostgresClient {
         if (attrType == 'BOOLEAN')
             return Number(value) > 0;
         if (attrType == 'DATE')
-            return mapNumberToDate(Number(value));
+            return new Date(value);
         if (attrType == 'NUMBER')
             return Number(value);
         return value;
