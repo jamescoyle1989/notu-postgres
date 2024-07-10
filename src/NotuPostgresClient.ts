@@ -115,10 +115,10 @@ export class NotuPostgresClient {
         const connection = await this._connectionFactory();
         try {
             if (space.isNew) {
-                space.id = await connection.run(
+                space.id = (await connection.run(
                     'INSERT INTO Space (name, version) VALUES ($1, $2) RETURNING id;',
                     space.name, space.version
-                ) as number;
+                )).rows[0][0] as number;
                 space.clean();
             }
             else if (space.isDirty) {
@@ -150,10 +150,10 @@ export class NotuPostgresClient {
         const connection = await this._connectionFactory();
         try {
             if (attr.isNew) {
-                attr.id = await connection.run(
+                attr.id = (await connection.run(
                     'INSERT INTO Attr (spaceId, name, description, type, color) VALUES ($1, $2, $3, $4, $5) RETURNING id;',
                     attr.space.id, attr.name, attr.description, mapAttrTypeToDb(attr.type), mapColorToInt(attr.color)
-                ) as number;
+                )).rows[0][0] as number;
                 attr.clean();
             }
             else if (attr.isDirty) {
@@ -202,13 +202,13 @@ export class NotuPostgresClient {
         const connection = await this._connectionFactory();
         try {
             const notesMap = new Map<number, any>();
-            const notes = (await connection.run(query)).map(x => {
+            const notes = (await connection.run(query)).rows.map(x => {
                 const note = {
                     state: 'CLEAN',
-                    id: x.id,
-                    date: x.date,
-                    text: x.text,
-                    spaceId: x.spaceId,
+                    id: x[0],
+                    date: x[3],
+                    text: x[2],
+                    spaceId: x[1],
                     ownTag: null,
                     tags: [],
                     attrs: []
@@ -218,13 +218,13 @@ export class NotuPostgresClient {
             });
                 
             const noteTagsSQL = `SELECT noteId, tagId FROM NoteTag WHERE noteId IN (${notes.map(n => n.id).join(',')});`;
-            (await connection.run(noteTagsSQL)).map(x => {
+            (await connection.run(noteTagsSQL)).rows.map(x => {
                 const nt = {
                     state: 'CLEAN',
-                    tagId: x.tagId,
+                    tagId: x[1],
                     attrs: []
                 };
-                const note = notesMap.get(x.noteId);
+                const note = notesMap.get(x[0]);
                 note.tags.push(nt);
             });
 
@@ -234,13 +234,13 @@ export class NotuPostgresClient {
             (await connection.run(noteAttrsSQL)).map(x => {
                 const na = {
                     state: 'CLEAN',
-                    attrId: x.attrId,
-                    tagId: x.tagId,
-                    value: this._convertAttrValueFromDb(mapAttrTypeFromDb(x.type), x.value)
+                    attrId: x[1],
+                    tagId: x[2],
+                    value: this._convertAttrValueFromDb(mapAttrTypeFromDb(x[4]), x[3])
                 };
-                const note = notesMap.get(x.noteId);
+                const note = notesMap.get(x[0]);
                 if (!!na.tagId)
-                    note.tags.find(x => x.tagId == na.tagId).attrs.push(na);
+                    note.tags.find(x => x[2] == na.tagId).attrs.push(na);
                 else
                     note.attrs.push(na);
             });
@@ -260,7 +260,7 @@ export class NotuPostgresClient {
 
         const connection = await this._connectionFactory();
         try {
-            return await connection.run(query)['cnt'];
+            return (await connection.run(query)).rows[0][0];
         }
         finally {
             connection.close();
@@ -273,10 +273,10 @@ export class NotuPostgresClient {
         try {
             for (const note of notes) {
                 if (note.isNew) {
-                    note.id = await connection.run(
+                    note.id = (await connection.run(
                         'INSERT INTO Note (date, text, spaceId) VALUES ($1, $2, $3) RETURNING id;',
                         note.date, note.text, note.space.id
-                    ) as number;
+                    )).rows[0][0] as number;
                     note.clean();
                 }
                 else if (note.isDirty) {

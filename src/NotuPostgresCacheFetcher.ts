@@ -16,11 +16,11 @@ export class NotuPostgresCacheFetcher {
         try {
             return (await connection
                 .run('SELECT id, name, version FROM Space;'))
-                .map(x => ({
+                .rows.map(x => ({
                     state: 'CLEAN',
-                    id: x.id,
-                    name: x.name,
-                    version: x.version
+                    id: x[0],
+                    name: x[1],
+                    version: x[2]
                 }));
         }
         finally {
@@ -34,13 +34,13 @@ export class NotuPostgresCacheFetcher {
         try {
             const tags = (await connection
                 .run('SELECT n.id, t.name, n.spaceId, t.color, t.isPublic FROM Note n INNER JOIN Tag t ON n.id = t.id;'))
-                .map(x => ({
+                .rows.map(x => ({
                     state: 'CLEAN',
-                    id: x.id,
-                    name: x.name,
-                    spaceId: x.spaceId,
-                    color: mapIntToColor(x.color),
-                    isPublic: x.isPublic,
+                    id: x[0],
+                    name: x[1],
+                    spaceId: x[2],
+                    color: mapIntToColor(x[3]),
+                    isPublic: x[4],
                     links: []
                 }));
             const tagsMap = new Map<number, any>();
@@ -48,7 +48,7 @@ export class NotuPostgresCacheFetcher {
                 tagsMap.set(tag.id, tag);
             (await connection
                 .run('SELECT t.id AS fromId, nt.tagId AS toId FROM Tag t INNER JOIN NoteTag nt ON t.id = nt.noteId;'))
-                .map(x => tagsMap.get(x.fromId).links.push(x.toId));
+                .rows.map(x => tagsMap.get(x[0]).links.push(x[1]));
             return Promise.resolve(tags);
         }
         finally {
@@ -62,14 +62,14 @@ export class NotuPostgresCacheFetcher {
         try {
             return (await connection
                 .run('SELECT id, name, description, spaceId, type, color FROM Attr;'))
-                .map(x => ({
+                .rows.map(x => ({
                     state: 'CLEAN',
-                    id: x.id,
-                    name: x.name,
-                    description: x.description,
-                    type: mapAttrTypeFromDb(x.type),
-                    spaceId: x.spaceId,
-                    color: mapIntToColor(x.color)
+                    id: x[0],
+                    name: x[1],
+                    description: x[2],
+                    type: mapAttrTypeFromDb(x[4]),
+                    spaceId: x[3],
+                    color: mapIntToColor(x[5])
                 }));
         }
         finally {
