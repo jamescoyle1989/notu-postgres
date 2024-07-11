@@ -85,11 +85,12 @@ export class NotuPostgresClient {
     
                 await connection.run(
                     `CREATE TABLE NoteAttr (
+                        id SERIAL NOT NULL PRIMARY KEY,
                         noteId INT NOT NULL,
                         attrId INT NOT NULL,
                         value VARCHAR(1000) NOT NULL,
                         tagId INT NULL,
-                        PRIMARY KEY (noteId, attrId, tagId),
+                        CONSTRAINT uniqueness UNIQUE NULLS NOT DISTINCT (noteId, attrId, tagId),
                         FOREIGN KEY (noteId) REFERENCES Note(id) ON DELETE CASCADE,
                         FOREIGN KEY (attrId) REFERENCES Attr(id) ON DELETE CASCADE,
                         FOREIGN KEY (tagId) REFERENCES Tag(id) ON DELETE CASCADE
