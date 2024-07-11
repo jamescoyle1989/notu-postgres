@@ -294,17 +294,17 @@ export class NotuPostgresClient {
                 }
                 if (!note.isDeleted) {
                     if (!!note.ownTag)
-                        this._saveTag(note.ownTag, connection);
-                    this._saveNoteTags(note.id, note.tags, connection);
-                    this._deleteNoteTags(note.id, note.tagsPendingDeletion, connection);
+                        await this._saveTag(note.ownTag, connection);
+                    await this._saveNoteTags(note.id, note.tags, connection);
+                    await this._deleteNoteTags(note.id, note.tagsPendingDeletion, connection);
                     const allActiveNas = note.attrs;
                     const allNasPendingDeletiong  = note.attrsPendingDeletion;
                     for (const nt of note.tags) {
                         allActiveNas.push(...nt.attrs);
                         allNasPendingDeletiong.push(...nt.attrsPendingDeletion);
                     }
-                    this._saveNoteAttrs(note.id, allActiveNas, connection);
-                    this._deleteNoteAttrs(note.id, allNasPendingDeletiong, connection);
+                    await this._saveNoteAttrs(note.id, allActiveNas, connection);
+                    await this._deleteNoteAttrs(note.id, allNasPendingDeletiong, connection);
                 }
             }
 
