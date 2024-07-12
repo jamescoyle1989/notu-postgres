@@ -243,7 +243,7 @@ export class NotuPostgresClient {
                     };
                     const note = notesMap.get(x[0]);
                     if (!!na.tagId)
-                        note.tags.find(x => x[2] == na.tagId).attrs.push(na);
+                        note.tags.find(nt => nt.tagId == na.tagId).attrs.push(na);
                     else
                         note.attrs.push(na);
                 });
