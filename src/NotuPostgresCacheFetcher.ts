@@ -49,7 +49,7 @@ export class NotuPostgresCacheFetcher {
             (await connection
                 .run('SELECT t.id AS fromId, nt.tagId AS toId FROM Tag t INNER JOIN NoteTag nt ON t.id = nt.noteId;'))
                 .rows.map(x => tagsMap.get(x[0]).links.push(x[1]));
-            return Promise.resolve(tags);
+            return tags;
         }
         finally {
             connection.close();
