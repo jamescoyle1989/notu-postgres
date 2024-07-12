@@ -219,6 +219,7 @@ export class NotuPostgresClient {
             });
             
             if (notes.length > 0) {
+
                 const noteTagsSQL = `SELECT noteId, tagId FROM NoteTag WHERE noteId IN (${notes.map(n => n.id).join(',')});`;
                 (await connection.run(noteTagsSQL)).rows.map(x => {
                     const nt = {
@@ -233,7 +234,7 @@ export class NotuPostgresClient {
                 const noteAttrsSQL = `SELECT na.noteId, na.attrId, na.tagId, na.value, a.type ` +
                                     `FROM NoteAttr na INNER JOIN Attr a ON na.attrId = a.id ` +
                                     `WHERE noteId IN (${notes.map(n => n.id).join(',')});`;
-                (await connection.run(noteAttrsSQL)).map(x => {
+                (await connection.run(noteAttrsSQL)).rows.map(x => {
                     const na = {
                         state: 'CLEAN',
                         attrId: x[1],

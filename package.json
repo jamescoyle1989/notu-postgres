@@ -1,6 +1,6 @@
 {
   "name": "notu-postgres",
-  "version": "0.1.6",
+  "version": "0.1.8",
   "main": "dist/cjs/notu-postgres.js",
   "module": "dist/esm/notu-postgres.js",
   "unpkg": "dist/cjs/notu-postgres.js",
