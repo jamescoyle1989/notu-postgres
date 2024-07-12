@@ -217,34 +217,36 @@ export class NotuPostgresClient {
                 notesMap.set(note.id, note);
                 return note;
             });
-                
-            const noteTagsSQL = `SELECT noteId, tagId FROM NoteTag WHERE noteId IN (${notes.map(n => n.id).join(',')});`;
-            (await connection.run(noteTagsSQL)).rows.map(x => {
-                const nt = {
-                    state: 'CLEAN',
-                    tagId: x[1],
-                    attrs: []
-                };
-                const note = notesMap.get(x[0]);
-                note.tags.push(nt);
-            });
+            
+            if (notes.length > 0) {
+                const noteTagsSQL = `SELECT noteId, tagId FROM NoteTag WHERE noteId IN (${notes.map(n => n.id).join(',')});`;
+                (await connection.run(noteTagsSQL)).rows.map(x => {
+                    const nt = {
+                        state: 'CLEAN',
+                        tagId: x[1],
+                        attrs: []
+                    };
+                    const note = notesMap.get(x[0]);
+                    note.tags.push(nt);
+                });
 
-            const noteAttrsSQL = `SELECT na.noteId, na.attrId, na.tagId, na.value, a.type ` +
-                                `FROM NoteAttr na INNER JOIN Attr a ON na.attrId = a.id ` +
-                                `WHERE noteId IN (${notes.map(n => n.id).join(',')});`;
-            (await connection.run(noteAttrsSQL)).map(x => {
-                const na = {
-                    state: 'CLEAN',
-                    attrId: x[1],
-                    tagId: x[2],
-                    value: this._convertAttrValueFromDb(mapAttrTypeFromDb(x[4]), x[3])
-                };
-                const note = notesMap.get(x[0]);
-                if (!!na.tagId)
-                    note.tags.find(x => x[2] == na.tagId).attrs.push(na);
-                else
-                    note.attrs.push(na);
-            });
+                const noteAttrsSQL = `SELECT na.noteId, na.attrId, na.tagId, na.value, a.type ` +
+                                    `FROM NoteAttr na INNER JOIN Attr a ON na.attrId = a.id ` +
+                                    `WHERE noteId IN (${notes.map(n => n.id).join(',')});`;
+                (await connection.run(noteAttrsSQL)).map(x => {
+                    const na = {
+                        state: 'CLEAN',
+                        attrId: x[1],
+                        tagId: x[2],
+                        value: this._convertAttrValueFromDb(mapAttrTypeFromDb(x[4]), x[3])
+                    };
+                    const note = notesMap.get(x[0]);
+                    if (!!na.tagId)
+                        note.tags.find(x => x[2] == na.tagId).attrs.push(na);
+                    else
+                        note.attrs.push(na);
+                });
+            }
 
             return notes;
         }
