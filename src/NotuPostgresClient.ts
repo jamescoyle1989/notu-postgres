@@ -179,16 +179,16 @@ export class NotuPostgresClient {
     }
 
 
-    getNotes(query: string, space: number | Space): Promise<Array<any>> {
+    async getNotes(query: string, space: number | Space): Promise<Array<any>> {
         if (space instanceof Space)
             space = space.id;
 
         query = this._prepareQuery(query, space).substring(query.indexOf(' FROM '));
 
-        return Promise.resolve(this._getNotesFromQuery(query));
+        return await this._getNotesFromQuery(query);
     }
 
-    getRelatedNotes(tag: Tag | Note | number): Promise<Array<any>> {
+    async getRelatedNotes(tag: Tag | Note | number): Promise<Array<any>> {
         if (tag instanceof Tag)
             tag = tag.id;
         if (tag instanceof Note)
@@ -196,7 +196,7 @@ export class NotuPostgresClient {
 
         const query = `SELECT n.id, n.spaceId, n.text, n.date FROM Note n INNER JOIN NoteTag nt ON nt.noteId = n.id WHERE nt.tagId = ${tag}`;
 
-        return Promise.resolve(this._getNotesFromQuery(query));
+        return await this._getNotesFromQuery(query);
     }
 
     private async _getNotesFromQuery(query: string): Promise<Array<any>> {
