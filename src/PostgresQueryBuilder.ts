@@ -87,6 +87,14 @@ export function buildNotesQuery(
         while (output.includes('{Tomorrow}'))
             output = output.replace('{Tomorrow}', `(CURRENT_DATE + INTERVAL'1d')`);
     }
+    {
+        while (output.includes('{True}'))
+            output = output.replace('{True}', 'TRUE');
+    }
+    {
+        while (output.includes('{False}'))
+            output = output.replace('{False}', 'FALSE');
+    }
 
     output += ';';
     return output;
