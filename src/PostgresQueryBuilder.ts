@@ -99,7 +99,7 @@ function getAttrSQLType(attr: Attr): string {
     if (attr.type == 'NUMBER')
         return 'NUMERIC(15, 5)';
     if (attr.type == 'BOOLEAN')
-        return 'BIT';
+        return 'BOOLEAN';
     if (attr.type == 'DATE')
         return 'TIMESTAMP';
     throw Error('Unexpected attr type');
