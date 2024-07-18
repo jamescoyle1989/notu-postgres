@@ -419,7 +419,7 @@ export class NotuPostgresClient {
             const dateValue = new Date(noteAttr.value);
             if (!(noteAttr.value instanceof Date))
                 noteAttr.value = dateValue;
-            return dateValue;
+            return dateValue.toISOString();
         }
         return noteAttr.value;
     }

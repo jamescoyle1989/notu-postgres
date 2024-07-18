@@ -59,3 +59,26 @@ export function testCacheFetcher(): NotuHttpCacheFetcher {
         }
     );
 }
+
+
+export class MockConnection {
+    history: Array<{type: string, command: string, args: Array<any>}> = [];
+    isOpen: boolean = true;
+
+    nextRunOutput: any;
+
+    onRun: (command: string, args: Array<any>) => void;
+
+
+    async run(command: string, ...args: Array<any>): Promise<any> {
+        this.history.push({type: 'run', command, args});
+        const output = this.nextRunOutput;
+        if (!!this.onRun)
+            this.onRun(command, args);
+        return output;
+    }
+
+    close(): void {
+        this.isOpen = false;
+    }
+}
