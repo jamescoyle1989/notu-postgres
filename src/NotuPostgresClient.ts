@@ -100,6 +100,11 @@ export class NotuPostgresClient {
                 await connection.run(`CREATE INDEX NoteAttr_attrId ON NoteAttr(attrId);`);
                 await connection.run(`CREATE INDEX NoteAttr_tagId ON NoteAttr(tagId);`);
             }
+
+            if (!(await connection.run(`SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'notetag' AND column_name = 'data');`)).rows[0][0]) {
+                await connection.run(`ALTER TABLE NoteTag ADD COLUMN data JSONB`);
+                await connection.run(`CREATE INDEX NoteTagDataIdx ON NoteTag USING GIN (data);`);
+            }
     
             return Promise.resolve();
         }
@@ -220,11 +225,12 @@ export class NotuPostgresClient {
             
             if (notes.length > 0) {
 
-                const noteTagsSQL = `SELECT noteId, tagId FROM NoteTag WHERE noteId IN (${notes.map(n => n.id).join(',')});`;
+                const noteTagsSQL = `SELECT noteId, tagId, data FROM NoteTag WHERE noteId IN (${notes.map(n => n.id).join(',')});`;
                 (await connection.run(noteTagsSQL)).rows.map(x => {
                     const nt = {
                         state: 'CLEAN',
                         tagId: x[1],
+                        data: x[2],
                         attrs: []
                     };
                     const note = notesMap.get(x[0]);
@@ -346,15 +352,23 @@ export class NotuPostgresClient {
 
     private async _saveNoteTags(noteId: number, noteTags: Array<NoteTag>, connection: PostgresConnection): Promise<void> {
         const inserts = noteTags.filter(x => x.isNew);
+        const updates = noteTags.filter(x => x.isDirty);
 
         if (inserts.length > 0) {
-            let command = 'INSERT INTO NoteTag (noteId, tagId) VALUES ' + inserts.map((x, idx) => `($${(idx * 2) + 1}, $${(idx * 2) + 2})`).join(', ');
+            let command = 'INSERT INTO NoteTag (noteId, tagId, data) VALUES ' + inserts.map((x, idx) => `($${(idx * 3) + 1}, $${(idx * 3) + 2}, $${(idx * 3) + 3})`).join(', ');
             let args = [];
             for (const insert of inserts) {
-                args.push(noteId, insert.tag.id);
+                args.push(noteId, insert.tag.id, !!insert.data ? JSON.stringify(insert.data) : null);
                 insert.clean();
             }
             await connection.run(command, ...args);
+        }
+        for (const update of updates) {
+            await connection.run(
+                'UPDATE NoteTag SET data = $1 WHERE noteId = $2 AND tagId = $3;',
+                !!update.data ? JSON.stringify(update.data) : null, noteId, update.tag.id
+            );
+            update.clean();
         }
     }
 
