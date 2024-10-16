@@ -1,7 +1,8 @@
 import { mapAttrTypeFromDb, mapAttrTypeToDb, mapColorToInt } from './SQLMappings';
 import { PostgresConnection } from './PostgresConnection';
-import { Attr, Note, NoteAttr, NoteTag, NotuCache, Space, Tag, parseQuery } from 'notu';
+import { Attr, Note, NoteAttr, NoteTag, NotuCache, Space, Tag, parseQuery, newParseQuery } from 'notu';
 import { buildNotesQuery } from './PostgresQueryBuilder';
+import { buildNewNotesQuery } from './NewPostgresQueryBuilder';
 
 
 /**
@@ -421,8 +422,14 @@ export class NotuPostgresClient {
 
 
     private _prepareQuery(query: string, spaceId: number): string {
-        const parsedQuery = parseQuery(query);
-        return buildNotesQuery(parsedQuery, spaceId, this._cache);
+        if (query.startsWith('$')) {
+            const parsedQuery = newParseQuery(query.substring(1));
+            return buildNewNotesQuery(parsedQuery, spaceId, this._cache);
+        }
+        else {
+            const parsedQuery = parseQuery(query);
+            return buildNotesQuery(parsedQuery, spaceId, this._cache);
+        }
     }
 
 
