@@ -127,6 +127,29 @@ test('buildNotesQuery correctly processes query with tag filter', async () => {
         );
 });
 
+test('buildNotesQuery correctly processes search depth 2 query with tag filter', async () => {
+    const query = new NewParsedQuery();
+    query.where = '{tag0}';
+    query.tags.push((() => {
+        const tag = new NewParsedTag();
+        tag.name = 'Tag 3';
+        tag.space = null;
+        tag.searchDepths = [2];
+        tag.filter = new NewParsedTagFilter();
+        tag.filter.pattern = '{exp0} < 5';
+        tag.filter.exps = ['beans.count'];
+        return tag;
+    })());
+
+    expect(buildNewNotesQuery(query, 1, await newNotuCache()))
+        .toBe(
+            'SELECT n.id, n.spaceId, n.text, n.date ' +
+            'FROM Note n LEFT JOIN Tag t ON n.id = t.id ' +
+            'WHERE n.spaceId = 1 AND ' +
+            `(EXISTS(SELECT 1 FROM NoteTag nt1 INNER JOIN NoteTag nt2 ON nt2.noteId = nt1.tagId WHERE nt1.noteId = n.id AND nt2.tagId = 3 AND (nt1.data->'beans'->>'count' < 5)));`
+        );
+});
+
 test('buildNotesQuery can handle {Now}', async () => {
     const query = new NewParsedQuery();
     query.where = 'date > {Now}';

@@ -40,7 +40,7 @@ function buildTagFilterCondition(parsedTag: NewParsedTag, tag: Tag): string {
         else if (searchDepth == 2)
             conditions.push(`EXISTS(SELECT 1 ` +
                 `FROM NoteTag nt1 INNER JOIN NoteTag nt2 ON nt2.noteId = nt1.tagId ` +
-                `WHERE nt1.noteId = n.id AND nt2.tagId = ${tag.id}${buildTagDataFilterExpression(parsedTag, 'nt2')})`);
+                `WHERE nt1.noteId = n.id AND nt2.tagId = ${tag.id}${buildTagDataFilterExpression(parsedTag, 'nt1')})`);
     }
     let output = conditions.join(' OR ');
     if (conditions.length > 1)
