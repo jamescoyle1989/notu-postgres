@@ -123,7 +123,7 @@ test('buildNotesQuery correctly processes query with tag filter', async () => {
             'SELECT n.id, n.spaceId, n.text, n.date ' +
             'FROM Note n LEFT JOIN Tag t ON n.id = t.id ' +
             'WHERE n.spaceId = 1 AND ' +
-            `(EXISTS(SELECT 1 FROM NoteTag nt WHERE nt.noteId = n.id AND nt.tagId = 3 AND (nt.data->'beans'->'count' < 5)));`
+            `(EXISTS(SELECT 1 FROM NoteTag nt WHERE nt.noteId = n.id AND nt.tagId = 3 AND (nt.data->'beans'->>'count' < 5)));`
         );
 });
 

@@ -54,9 +54,16 @@ function buildTagDataFilterExpression(parsedTag: NewParsedTag, noteTagsAlias: st
         return '';
     let output = parsedTag.filter.pattern;
     for (let i = 0; i < parsedTag.filter.exps.length; i++) {
-        let exp = parsedTag.filter.exps[i];
-        exp = exp.split('.').map(x => `'${x}'`).join('->');
-        output = output.replace(`{exp${i}}`, `${noteTagsAlias}.data->${exp}`);
+        const parts = parsedTag.filter.exps[i].split('.').map(x => `'${x}'`);
+        let exp = 'data';
+        for (let i = 0; i < parts.length; i++) {
+            if (i + 1 == parts.length)
+                exp += '->>';
+            else
+                exp += '->';
+            exp += parts[i];
+        }
+        output = output.replace(`{exp${i}}`, `${noteTagsAlias}.${exp}`);
     }
     return ` AND (${output})`;
 }
