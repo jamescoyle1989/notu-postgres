@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { NotuCache, NewParsedQuery, NewParsedTag, ParsedTag, NewParsedTagFilter } from 'notu';
+import { NotuCache, NewParsedQuery, NewParsedTag, ParsedTag, NewParsedTagFilter, newParseQuery } from 'notu';
 import { buildNewNotesQuery } from '../src/NewPostgresQueryBuilder';
 import { testCacheFetcher } from './TestHelpers';
 
@@ -184,4 +184,20 @@ test('buildNotesQuery can handle {Tomorrow}', async () => {
     const result = buildNewNotesQuery(query, 1, await newNotuCache());
 
     expect(result).toContain(`date > (CURRENT_DATE + INTERVAL'1d')`);
+});
+
+test('ordering by date property works correctly', async () => {
+    const query = newParseQuery(`_#[Space 2.Tag 2] AND #[Space 1.Tag 1] ORDER BY #[Space 1.Tag 1]{(.date)::date} DESC`);
+
+    const result = buildNewNotesQuery(query, 2, await newNotuCache());
+
+    expect(result).toBe(
+        'SELECT n.id, n.spaceId, n.text, n.date ' +
+        'FROM Note n LEFT JOIN Tag t ON n.id = t.id ' +
+        'WHERE n.spaceId = 2 AND (' +
+            `EXISTS(SELECT 1 FROM NoteTag nt1 INNER JOIN NoteTag nt2 ON nt2.noteId = nt1.tagId WHERE nt1.noteId = n.id AND nt2.tagId = 2) AND ` +
+            `EXISTS(SELECT 1 FROM NoteTag nt WHERE nt.noteId = n.id AND nt.tagId = 1)` +
+        ') ' +
+        `ORDER BY (SELECT (nt.data->>'date')::date FROM NoteTag nt WHERE nt.noteId = n.id AND nt.tagId = 1) DESC;`
+    );
 });

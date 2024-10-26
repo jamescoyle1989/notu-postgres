@@ -9,18 +9,9 @@ export function buildNewNotesQuery(
 
     output += ` WHERE n.spaceId = ${spaceId}`;
     if (!!parsedQuery.where)
-        output += ` AND (${parsedQuery.where})`;
+        output += ` AND (${buildNewNotesQueryPortion(parsedQuery, spaceId, cache, 'where')})`;
     if (!!parsedQuery.order)
-        output += ` ORDER BY ${parsedQuery.order}`;
-
-    for (let i = 0; i < parsedQuery.tags.length; i++) {
-        const parsedTag = parsedQuery.tags[i];
-        const tag = cache.getTagByName(
-            parsedTag.name,
-            !!parsedTag.space ? cache.getSpaceByName(parsedTag.space).id : spaceId
-        );
-        output = output.replace(`{tag${i}}`, buildTagFilterCondition(parsedTag, tag));
-    }
+        output += ` ORDER BY ${buildNewNotesQueryPortion(parsedQuery, spaceId, cache, 'order')}`;
 
     output = processLiterals(output);
     output += ';';
@@ -28,6 +19,47 @@ export function buildNewNotesQuery(
 }
 
 
+/**
+ * Builds up a portion of the query, either the where section or the order section
+ * Will go through each tag it can find in that section, swapping it out for a proper SQL expression
+ */
+function buildNewNotesQueryPortion(
+    parsedQuery: NewParsedQuery,
+    spaceId: number,
+    cache: NotuCache,
+    portion: string
+): string {
+    let output: string = null;
+    let tagBuilder: (parsedTag: NewParsedTag, tag: Tag) => string;
+    if (portion == 'where') {
+        output = parsedQuery.where;
+        tagBuilder = buildTagFilterCondition;
+    }
+    else if (portion == 'order') {
+        output = parsedQuery.order;
+        tagBuilder = buildTagOrderClause;
+    }
+    else
+        throw Error('Invalid portion');
+
+    for (let i = 0; i < parsedQuery.tags.length; i++) {
+        if (!output.includes(`{tag${i}}`))
+            continue;
+        const parsedTag = parsedQuery.tags[i];
+        const tag = cache.getTagByName(
+            parsedTag.name,
+            !!parsedTag.space ? cache.getSpaceByName(parsedTag.space).id : spaceId
+        );
+        output = output.replace(`{tag${i}}`, tagBuilder(parsedTag, tag));
+    }
+
+    return output;
+}
+
+
+/**
+ * The logic for building up a SQL snippet from a tag for the purposes of filtering
+ */
 function buildTagFilterCondition(parsedTag: NewParsedTag, tag: Tag): string {
     let conditions = [];
     for (const searchDepth of parsedTag.searchDepths) {
@@ -36,11 +68,11 @@ function buildTagFilterCondition(parsedTag: NewParsedTag, tag: Tag): string {
         else if (searchDepth == 1)
             conditions.push(`EXISTS(SELECT 1 ` +
                 `FROM NoteTag nt ` +
-                `WHERE nt.noteId = n.id AND nt.tagId = ${tag.id}${buildTagDataFilterExpression(parsedTag, 'nt')})`);
+                `WHERE nt.noteId = n.id AND nt.tagId = ${tag.id}${buildTagDataWhereExpression(parsedTag, 'nt')})`);
         else if (searchDepth == 2)
             conditions.push(`EXISTS(SELECT 1 ` +
                 `FROM NoteTag nt1 INNER JOIN NoteTag nt2 ON nt2.noteId = nt1.tagId ` +
-                `WHERE nt1.noteId = n.id AND nt2.tagId = ${tag.id}${buildTagDataFilterExpression(parsedTag, 'nt1')})`);
+                `WHERE nt1.noteId = n.id AND nt2.tagId = ${tag.id}${buildTagDataWhereExpression(parsedTag, 'nt1')})`);
     }
     let output = conditions.join(' OR ');
     if (conditions.length > 1)
@@ -49,7 +81,41 @@ function buildTagFilterCondition(parsedTag: NewParsedTag, tag: Tag): string {
 }
 
 
-function buildTagDataFilterExpression(parsedTag: NewParsedTag, noteTagsAlias: string): string {
+/**
+ * The logic for building up a SQL snippet from a tag for the purposes of ordering
+ */
+function buildTagOrderClause(parsedTag: NewParsedTag, tag: Tag): string {
+    if (parsedTag.searchDepths.length != 1)
+        throw Error('Order clauses must specify exactly one search depth which they are ordering by')
+    const searchDepth = parsedTag.searchDepths[0];
+    if (searchDepth == 0)
+        return `n.id = ${tag.id}`;
+    if (searchDepth == 1)
+        return `(SELECT ${buildTagDataExpression(parsedTag, 'nt')} ` +
+            `FROM NoteTag nt ` +
+            `WHERE nt.noteId = n.id AND nt.tagId = ${tag.id})`;
+    if (searchDepth == 2)
+        return `(SELECT ${buildTagDataExpression(parsedTag, 'nt1')} ` +
+            `FROM NoteTag nt1 INNER JOIN NoteTag nt2 ON nt2.noteId = nt1.tagId ` +
+            `WHERE nt1.noteId = n.id AND nt2.tagId = ${tag.id}`
+}
+
+
+/**
+ * A very light wrapper around buildTagDataExpression. Just makes sure that tag data filtering is AND'ed onto the rest of the filter
+ */
+function buildTagDataWhereExpression(parsedTag: NewParsedTag, noteTagsAlias: string): string {
+    let output = buildTagDataExpression(parsedTag, noteTagsAlias);
+    if (output != '')
+        output = ` AND (${output})`;
+    return output;
+}
+
+
+/**
+ * Takes in a parsed tag and generates SQL to query the jsonb data attached to it
+ */
+function buildTagDataExpression(parsedTag: NewParsedTag, noteTagsAlias: string): string {
     if (!parsedTag.filter)
         return '';
     let output = parsedTag.filter.pattern;
@@ -65,10 +131,13 @@ function buildTagDataFilterExpression(parsedTag: NewParsedTag, noteTagsAlias: st
         }
         output = output.replace(`{exp${i}}`, `${noteTagsAlias}.${exp}`);
     }
-    return ` AND (${output})`;
+    return output;
 }
 
 
+/**
+ * Logic for processing literals added by NotuQL for the purposes of being slightly more cross-platform
+ */
 function processLiterals(query: string) {
     {
         while (query.includes('{Now}'))
