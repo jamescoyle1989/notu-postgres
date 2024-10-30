@@ -15,12 +15,13 @@ export class NotuPostgresCacheFetcher {
         const connection = await this._connectionFactory();
         try {
             return (await connection
-                .run('SELECT id, name, version FROM Space;'))
+                .run('SELECT id, name, version, useCommonSpace FROM Space;'))
                 .rows.map(x => ({
                     state: 'CLEAN',
                     id: x[0],
                     name: x[1],
-                    version: x[2]
+                    version: x[2],
+                    useCommonSpace: x[3]
                 }));
         }
         finally {

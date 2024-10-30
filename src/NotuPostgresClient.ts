@@ -103,8 +103,12 @@ export class NotuPostgresClient {
             }
 
             if (!(await connection.run(`SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'notetag' AND column_name = 'data');`)).rows[0][0]) {
-                await connection.run(`ALTER TABLE NoteTag ADD COLUMN data JSONB`);
+                await connection.run(`ALTER TABLE NoteTag ADD COLUMN data JSONB;`);
                 await connection.run(`CREATE INDEX NoteTagDataIdx ON NoteTag USING GIN (data);`);
+            }
+
+            if (!(await connection.run(`SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'space' AND column_name = 'usecommonspace');`)).rows[0][0]) {
+                await connection.run(`ALTER TABLE Space ADD COLUMN useCommonSpace BOOL NOT NULL DEFAULT false;`);
             }
     
             return Promise.resolve();
@@ -123,15 +127,15 @@ export class NotuPostgresClient {
         try {
             if (space.isNew) {
                 space.id = (await connection.run(
-                    'INSERT INTO Space (name, version) VALUES ($1, $2) RETURNING id;',
-                    space.name, space.version
+                    'INSERT INTO Space (name, version, useCommonSpace) VALUES ($1, $2, $3) RETURNING id;',
+                    space.name, space.version, space.useCommonSpace ? 1 : 0
                 )).rows[0][0] as number;
                 space.clean();
             }
             else if (space.isDirty) {
                 await connection.run(
-                    'UPDATE Space SET name = $1, version = $2 WHERE id = $3;',
-                    space.name, space.version, space.id
+                    'UPDATE Space SET name = $1, version = $2, useCommonSpace = $3 WHERE id = $4;',
+                    space.name, space.version, space.useCommonSpace ? 1 : 0, space.id
                 );
                 space.clean();
             }
