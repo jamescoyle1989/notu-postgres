@@ -110,6 +110,10 @@ export class NotuPostgresClient {
             if (!(await connection.run(`SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'space' AND column_name = 'usecommonspace');`)).rows[0][0]) {
                 await connection.run(`ALTER TABLE Space ADD COLUMN useCommonSpace BOOL NOT NULL DEFAULT false;`);
             }
+
+            if (!(await connection.run(`SELECT EXISTS (SELECT * FROM information_schema.table_constraints WHERE table_name = 'noteattr' AND constraint_type = 'FOREIGN KEY' AND constraint_name = 'noteattr_noteid_tagid_fkey');`)).rows[0][0]) {
+                await connection.run(`ALTER TABLE NoteAttr ADD FOREIGN KEY (noteId, tagId) REFERENCES NoteTag(noteId, tagId) ON DELETE CASCADE;`);
+            }
     
             return Promise.resolve();
         }
