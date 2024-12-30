@@ -1,5 +1,5 @@
 import { PostgresConnection } from './PostgresConnection';
-import { mapAttrTypeFromDb, mapIntToColor } from './SQLMappings';
+import { mapIntToColor } from './SQLMappings';
 
 
 export class NotuPostgresCacheFetcher {
@@ -51,27 +51,6 @@ export class NotuPostgresCacheFetcher {
                 .run('SELECT t.id AS fromId, nt.tagId AS toId FROM Tag t INNER JOIN NoteTag nt ON t.id = nt.noteId;'))
                 .rows.map(x => tagsMap.get(x[0]).links.push(x[1]));
             return tags;
-        }
-        finally {
-            connection.close();
-        }
-    }
-
-
-    async getAttrsData(): Promise<Array<any>> {
-        const connection = await this._connectionFactory();
-        try {
-            return (await connection
-                .run('SELECT id, name, description, spaceId, type, color FROM Attr;'))
-                .rows.map(x => ({
-                    state: 'CLEAN',
-                    id: x[0],
-                    name: x[1],
-                    description: x[2],
-                    type: mapAttrTypeFromDb(x[4]),
-                    spaceId: x[3],
-                    color: mapIntToColor(x[5])
-                }));
         }
         finally {
             connection.close();

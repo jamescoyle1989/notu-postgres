@@ -1,8 +1,7 @@
-import { mapAttrTypeFromDb, mapAttrTypeToDb, mapColorToInt } from './SQLMappings';
+import { mapColorToInt } from './SQLMappings';
 import { PostgresConnection } from './PostgresConnection';
-import { Attr, Note, NoteAttr, NoteTag, NotuCache, Space, Tag, parseQuery, newParseQuery } from 'notu';
-import { buildNotesQuery } from './PostgresQueryBuilder';
-import { buildNewNotesQuery } from './NewPostgresQueryBuilder';
+import { Note, NoteTag, NotuCache, Space, Tag, parseQuery } from 'notu';
+import { buildNewNotesQuery } from './PostgresQueryBuilder';
 
 
 /**
@@ -70,36 +69,6 @@ export class NotuPostgresClient {
                 );
                 await connection.run(`CREATE INDEX NoteTag_noteId ON NoteTag(noteId);`);
                 await connection.run(`CREATE INDEX NoteTag_tagId ON NoteTag(tagId);`);
-    
-                await connection.run(
-                    `CREATE TABLE Attr (
-                        id SERIAL NOT NULL PRIMARY KEY,
-                        spaceId INT NOT NULL,
-                        name VARCHAR(50) NOT NULL,
-                        description VARCHAR(256) NOT NULL,
-                        type SMALLINT NOT NULL,
-                        color INT NULL,
-                        FOREIGN KEY (spaceId) REFERENCES Space(id) ON DELETE CASCADE
-                    );`
-                );
-                await connection.run(`CREATE INDEX Attr_spaceId ON Attr(spaceId);`);
-    
-                await connection.run(
-                    `CREATE TABLE NoteAttr (
-                        id SERIAL NOT NULL PRIMARY KEY,
-                        noteId INT NOT NULL,
-                        attrId INT NOT NULL,
-                        value VARCHAR(1000) NOT NULL,
-                        tagId INT NULL,
-                        CONSTRAINT uniqueness UNIQUE NULLS NOT DISTINCT (noteId, attrId, tagId),
-                        FOREIGN KEY (noteId) REFERENCES Note(id) ON DELETE CASCADE,
-                        FOREIGN KEY (attrId) REFERENCES Attr(id) ON DELETE CASCADE,
-                        FOREIGN KEY (tagId) REFERENCES Tag(id) ON DELETE CASCADE
-                    );`
-                );
-                await connection.run(`CREATE INDEX NoteAttr_noteId ON NoteAttr(noteId);`);
-                await connection.run(`CREATE INDEX NoteAttr_attrId ON NoteAttr(attrId);`);
-                await connection.run(`CREATE INDEX NoteAttr_tagId ON NoteAttr(tagId);`);
             }
 
             if (!(await connection.run(`SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'notetag' AND column_name = 'data');`)).rows[0][0]) {
@@ -111,8 +80,9 @@ export class NotuPostgresClient {
                 await connection.run(`ALTER TABLE Space ADD COLUMN useCommonSpace BOOL NOT NULL DEFAULT false;`);
             }
 
-            if (!(await connection.run(`SELECT EXISTS (SELECT * FROM information_schema.table_constraints WHERE table_name = 'noteattr' AND constraint_type = 'FOREIGN KEY' AND constraint_name = 'noteattr_noteid_tagid_fkey');`)).rows[0][0]) {
-                await connection.run(`ALTER TABLE NoteAttr ADD FOREIGN KEY (noteId, tagId) REFERENCES NoteTag(noteId, tagId) ON DELETE CASCADE;`);
+            if (!!(await connection.run(`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'attr');`)).rows[0][0]) {
+                await connection.run(`DROP TABLE NoteAttr;`);
+                await connection.run(`DROP TABLE Attr;`);
             }
     
             return Promise.resolve();
@@ -158,41 +128,6 @@ export class NotuPostgresClient {
     }
 
 
-    async saveAttr(attr: Attr): Promise<any> {
-        if (attr.isClean)
-            return Promise.resolve();
-
-        const connection = await this._connectionFactory();
-        try {
-            if (attr.isNew) {
-                attr.id = (await connection.run(
-                    'INSERT INTO Attr (spaceId, name, description, type, color) VALUES ($1, $2, $3, $4, $5) RETURNING id;',
-                    attr.space.id, attr.name, attr.description, mapAttrTypeToDb(attr.type), mapColorToInt(attr.color)
-                )).rows[0][0] as number;
-                attr.clean();
-            }
-            else if (attr.isDirty) {
-                await connection.run(
-                    'UPDATE Attr SET spaceId = $1, name = $2, description = $3, type = $4, color = $5 WHERE id = $6;',
-                    attr.space.id, attr.name, attr.description, mapAttrTypeToDb(attr.type), mapColorToInt(attr.color), attr.id
-                );
-                attr.clean();
-            }
-            else if (attr.isDeleted) {
-                await connection.run(
-                    'DELETE FROM Attr WHERE id = $1;',
-                    attr.id
-                );
-            }
-    
-            return Promise.resolve(attr.toJSON());
-        }
-        finally {
-            await connection.close();
-        }
-    }
-
-
     async getNotes(query: string, space: number | Space): Promise<Array<any>> {
         if (space instanceof Space)
             space = space.id;
@@ -225,8 +160,7 @@ export class NotuPostgresClient {
                     text: x[2],
                     spaceId: x[1],
                     ownTag: null,
-                    tags: [],
-                    attrs: []
+                    tags: []
                 };
                 notesMap.set(note.id, note);
                 return note;
@@ -239,28 +173,10 @@ export class NotuPostgresClient {
                     const nt = {
                         state: 'CLEAN',
                         tagId: x[1],
-                        data: x[2],
-                        attrs: []
+                        data: x[2]
                     };
                     const note = notesMap.get(x[0]);
                     note.tags.push(nt);
-                });
-
-                const noteAttrsSQL = `SELECT na.noteId, na.attrId, na.tagId, na.value, a.type ` +
-                                    `FROM NoteAttr na INNER JOIN Attr a ON na.attrId = a.id ` +
-                                    `WHERE noteId IN (${notes.map(n => n.id).join(',')});`;
-                (await connection.run(noteAttrsSQL)).rows.map(x => {
-                    const na = {
-                        state: 'CLEAN',
-                        attrId: x[1],
-                        tagId: x[2],
-                        value: this._convertAttrValueFromDb(mapAttrTypeFromDb(x[4]), x[3])
-                    };
-                    const note = notesMap.get(x[0]);
-                    if (!!na.tagId)
-                        note.tags.find(nt => nt.tagId == na.tagId).attrs.push(na);
-                    else
-                        note.attrs.push(na);
                 });
             }
 
@@ -316,14 +232,6 @@ export class NotuPostgresClient {
                         await this._saveTag(note.ownTag, connection);
                     await this._saveNoteTags(note.id, note.tags, connection);
                     await this._deleteNoteTags(note.id, note.tagsPendingDeletion, connection);
-                    const allActiveNas = note.attrs;
-                    const allNasPendingDeletiong  = note.attrsPendingDeletion;
-                    for (const nt of note.tags) {
-                        allActiveNas.push(...nt.attrs);
-                        allNasPendingDeletiong.push(...nt.attrsPendingDeletion);
-                    }
-                    await this._saveNoteAttrs(note.id, allActiveNas, connection);
-                    await this._deleteNoteAttrs(note.id, allNasPendingDeletiong, connection);
                 }
             }
 
@@ -390,76 +298,13 @@ export class NotuPostgresClient {
     }
 
 
-    private async _saveNoteAttrs(noteId: number, noteAttrs: Array<NoteAttr>, connection: PostgresConnection): Promise<void> {
-        const inserts = noteAttrs.filter(x => x.isNew);
-        const updates = noteAttrs.filter(x => x.isDirty);
-
-        if (inserts.length > 0) {
-            let command = 'INSERT INTO NoteAttr (noteId, attrId, value, tagId) VALUES ' + inserts.map((x, idx) => `($${(idx * 4) + 1}, $${(idx * 4) + 2}, $${(idx * 4) + 3}, $${(idx * 4) + 4})`).join(', ');
-            let args = [];
-            for (const insert of inserts) {
-                args.push(noteId, insert.attr.id, this._convertAttrValueToDb(insert), insert.tag?.id ?? null);
-                insert.clean();
-            }
-            await connection.run(command, ...args);
-        }
-        for (const update of updates) {
-            await connection.run(
-                'UPDATE NoteAttr SET value = $1 WHERE noteId = $2 AND attrId = $3 AND COALESCE(tagId, 0) = $4;',
-                this._convertAttrValueToDb(update), noteId, update.attr.id, update.tag?.id ?? 0
-            );
-            update.clean();
-        }
-    }
-
-    private async _deleteNoteAttrs(noteId: number, noteAttrsForDeletion: Array<NoteAttr>, connection: PostgresConnection): Promise<void> {
-        if (noteAttrsForDeletion.length > 0) {
-            let command = `DELETE FROM NoteAttr WHERE noteId = $1 AND (${noteAttrsForDeletion.map((x, idx) => `(attrId = $${(idx * 2) + 2} AND COALESCE(tagId, 0) = $${(idx * 2) + 3})`).join(' OR ')})`;
-            let args = [noteId];
-            for (const del of noteAttrsForDeletion)
-                args.push(del.attr.id, del.tag?.id ?? 0);
-            await connection.run(command, ...args);
-        }
-    }
-
-
     customJob(name: string, data: any): Promise<any> {
         return Promise.resolve({});
     }
 
 
-
     private _prepareQuery(query: string, spaceId: number): string {
-        if (query.startsWith('$')) {
-            const parsedQuery = newParseQuery(query.substring(1));
-            return buildNewNotesQuery(parsedQuery, spaceId, this._cache);
-        }
-        else {
-            const parsedQuery = parseQuery(query);
-            return buildNotesQuery(parsedQuery, spaceId, this._cache);
-        }
-    }
-
-
-    private _convertAttrValueToDb(noteAttr: NoteAttr): any {
-        if (noteAttr.attr.isBoolean)
-            return noteAttr.value ? 1 : 0;
-        if (noteAttr.attr.isDate) {
-            const dateValue = new Date(noteAttr.value);
-            if (!(noteAttr.value instanceof Date))
-                noteAttr.value = dateValue;
-            return dateValue.toISOString();
-        }
-        return noteAttr.value;
-    }
-
-    private _convertAttrValueFromDb(attrType: string, value: string) {
-        if (attrType == 'BOOLEAN')
-            return Number(value) > 0;
-        if (attrType == 'DATE')
-            return new Date(value);
-        if (attrType == 'NUMBER')
-            return Number(value);
-        return value;
+        const parsedQuery = parseQuery(query);
+        return buildNewNotesQuery(parsedQuery, spaceId, this._cache);
     }
 }

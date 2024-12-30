@@ -1,114 +1,167 @@
-import { Attr, ParsedQuery, NotuCache } from 'notu';
+import { ParsedQuery, ParsedTag, NotuCache, Tag } from 'notu';
 
-export function buildNotesQuery(
+export function buildNewNotesQuery(
     parsedQuery: ParsedQuery,
     spaceId: number,
     cache: NotuCache
 ): string {
     let output = 'SELECT n.id, n.spaceId, n.text, n.date FROM Note n LEFT JOIN Tag t ON n.id = t.id';
-    
-    output += ` WHERE n.spaceId = ${spaceId}`
+
+    output += ` WHERE n.spaceId = ${spaceId}`;
     if (!!parsedQuery.where)
-        output += ` AND (${parsedQuery.where})`;
+        output += ` AND (${buildNewNotesQueryPortion(parsedQuery, spaceId, cache, 'where')})`;
     if (!!parsedQuery.order)
-        output += ` ORDER BY ${parsedQuery.order}`;
+        output += ` ORDER BY ${buildNewNotesQueryPortion(parsedQuery, spaceId, cache, 'order')}`;
 
-    for (let i = 0; i < parsedQuery.tags.length; i++) {
-        const parsedTag = parsedQuery.tags[i];
-        const tag = cache.getTagByName(
-            parsedTag.name,
-            !!parsedTag.space ? cache.getSpaceByName(parsedTag.space).id : spaceId
-        );
-        if (parsedTag.searchDepth == 0)
-            output = output.replace(`{tag${i}}`, `n.id = ${tag.id}`);
-
-        else if (parsedTag.searchDepth == 1 && parsedTag.strictSearchDepth && !parsedTag.includeOwner)
-            output = output.replace(`{tag${i}}`, `EXISTS(SELECT 1 FROM NoteTag nt WHERE nt.noteId = n.id AND nt.tagId = ${tag.id})`);
-
-        else if (parsedTag.searchDepth == 1)
-            output = output.replace(`{tag${i}}`, `(n.id = ${tag.id} OR EXISTS(SELECT 1 FROM NoteTag nt WHERE nt.noteId = n.id AND nt.tagId = ${tag.id}))`);
-
-        else if (parsedTag.searchDepth == 2 && parsedTag.strictSearchDepth && !parsedTag.includeOwner)
-            output = output.replace(`{tag${i}}`, `EXISTS(SELECT 1 FROM NoteTag nt1 INNER JOIN NoteTag nt2 ON nt2.noteId = nt1.tagId WHERE nt1.noteId = n.id AND nt2.tagId = ${tag.id})`);
-
-        else if (parsedTag.searchDepth == 2 && parsedTag.strictSearchDepth && parsedTag.includeOwner)
-            output = output.replace(`{tag${i}}`, `(n.id = ${tag.id} OR EXISTS(SELECT 1 FROM NoteTag nt1 INNER JOIN NoteTag nt2 ON nt2.noteId = nt1.tagId WHERE nt1.noteId = n.id AND nt2.tagId = ${tag.id}))`);
-
-        else if (parsedTag.searchDepth == 2 && !parsedTag.strictSearchDepth && !parsedTag.includeOwner)
-            output = output.replace(`{tag${i}}`, `EXISTS(SELECT 1 FROM NoteTag nt1 LEFT JOIN NoteTag nt2 ON nt2.noteId = nt1.tagId WHERE nt1.noteId = n.id AND ${tag.id} IN (nt1.tagId, nt2.tagId))`);
-
-        else if (parsedTag.searchDepth == 2)
-            output = output.replace(`{tag${i}}`, `(n.id = ${tag.id} OR EXISTS(SELECT 1 FROM NoteTag nt1 LEFT JOIN NoteTag nt2 ON nt2.noteId = nt1.tagId WHERE nt1.noteId = n.id AND ${tag.id} IN (nt1.tagId, nt2.tagId)))`);
-
-        else
-            throw Error(`Sorry, that tag search feature hasn't been implemented yet.`);
-    }
-
-    for (let i = 0; i < parsedQuery.attrs.length; i++) {
-        const parsedAttr = parsedQuery.attrs[i];
-        const attr = cache.getAttrByName(parsedAttr.name, spaceId);
-        let tagIds = [];
-        if (!!parsedAttr.tagNameFilters) {
-            tagIds = parsedAttr.tagNameFilters
-                .map(parsedTag => cache.getTagByName(
-                    parsedTag.name,
-                    !!parsedTag.space ? cache.getSpaceByName(parsedTag.space).id : spaceId
-                ).id);
-        }
-        
-        if (parsedAttr.exists) {
-            if (tagIds.length == 0)
-                output = output.replace(`{attr${i}}`, `EXISTS(SELECT 1 FROM NoteAttr na WHERE na.noteId = n.id AND na.attrId = ${attr.id})`);
-            else
-                output = output.replace(`{attr${i}}`, `EXISTS(SELECT 1 FROM NoteAttr na WHERE na.noteId = n.id AND na.attrId = ${attr.id} AND na.tagId IN (${tagIds.join(',')}))`);
-        }
-        else {
-            if (tagIds.length == 0)
-                output = output.replace(`{attr${i}}`, `CAST((SELECT na.value FROM NoteAttr na WHERE na.noteId = n.id AND na.attrId = ${attr.id}) AS ${getAttrSQLType(attr)})`);
-            else
-                output = output.replace(`{attr${i}}`, `CAST((SELECT na.value FROM NoteAttr na WHERE na.noteId = n.id AND na.attrId = ${attr.id} AND na.tagId IN (${tagIds.join(',')})) AS ${getAttrSQLType(attr)})`);
-        }
-    }
-
-    //Start of handling special expressions/literals which can be used in queries
-    {
-        while (output.includes('{Now}'))
-            output = output.replace('{Now}', 'NOW()');
-    }
-    {
-        while (output.includes('{Today}'))
-            output = output.replace('{Today}', 'CURRENT_DATE');
-    }
-    {
-        while (output.includes('{Yesterday}'))
-            output = output.replace('{Yesterday}', `(CURRENT_DATE - INTERVAL'1d')`);
-    }
-    {
-        while (output.includes('{Tomorrow}'))
-            output = output.replace('{Tomorrow}', `(CURRENT_DATE + INTERVAL'1d')`);
-    }
-    {
-        while (output.includes('{True}'))
-            output = output.replace('{True}', 'TRUE');
-    }
-    {
-        while (output.includes('{False}'))
-            output = output.replace('{False}', 'FALSE');
-    }
-
+    output = processLiterals(output);
     output += ';';
     return output;
 }
 
 
-function getAttrSQLType(attr: Attr): string {
-    if (attr.type == 'TEXT')
-        return 'TEXT';
-    if (attr.type == 'NUMBER')
-        return 'NUMERIC(15, 5)';
-    if (attr.type == 'BOOLEAN')
-        return 'BOOLEAN';
-    if (attr.type == 'DATE')
-        return 'TIMESTAMP';
-    throw Error('Unexpected attr type');
+/**
+ * Builds up a portion of the query, either the where section or the order section
+ * Will go through each tag it can find in that section, swapping it out for a proper SQL expression
+ */
+function buildNewNotesQueryPortion(
+    parsedQuery: ParsedQuery,
+    spaceId: number,
+    cache: NotuCache,
+    portion: string
+): string {
+    let output: string = null;
+    let tagBuilder: (parsedTag: ParsedTag, tag: Tag) => string;
+    if (portion == 'where') {
+        output = parsedQuery.where;
+        tagBuilder = buildTagFilterCondition;
+    }
+    else if (portion == 'order') {
+        output = parsedQuery.order;
+        tagBuilder = buildTagOrderClause;
+    }
+    else
+        throw Error('Invalid portion');
+
+    for (let i = 0; i < parsedQuery.tags.length; i++) {
+        if (!output.includes(`{tag${i}}`))
+            continue;
+        const parsedTag = parsedQuery.tags[i];
+        const tag = cache.getTagByName(
+            parsedTag.name,
+            !!parsedTag.space ? cache.getSpaceByName(parsedTag.space).id : spaceId
+        );
+        output = output.replace(`{tag${i}}`, tagBuilder(parsedTag, tag));
+    }
+
+    return output;
+}
+
+
+/**
+ * The logic for building up a SQL snippet from a tag for the purposes of filtering
+ */
+function buildTagFilterCondition(parsedTag: ParsedTag, tag: Tag): string {
+    let conditions = [];
+    for (const searchDepth of parsedTag.searchDepths) {
+        if (searchDepth == 0)
+            conditions.push(`n.id = ${tag.id}`);
+        else if (searchDepth == 1)
+            conditions.push(`EXISTS(SELECT 1 ` +
+                `FROM NoteTag nt ` +
+                `WHERE nt.noteId = n.id AND nt.tagId = ${tag.id}${buildTagDataWhereExpression(parsedTag, 'nt')})`);
+        else if (searchDepth == 2)
+            conditions.push(`EXISTS(SELECT 1 ` +
+                `FROM NoteTag nt1 INNER JOIN NoteTag nt2 ON nt2.noteId = nt1.tagId ` +
+                `WHERE nt1.noteId = n.id AND nt2.tagId = ${tag.id}${buildTagDataWhereExpression(parsedTag, 'nt1')})`);
+    }
+    let output = conditions.join(' OR ');
+    if (conditions.length > 1)
+        output = `(${output})`;
+    return output;
+}
+
+
+/**
+ * The logic for building up a SQL snippet from a tag for the purposes of ordering
+ */
+function buildTagOrderClause(parsedTag: ParsedTag, tag: Tag): string {
+    if (parsedTag.searchDepths.length != 1)
+        throw Error('Order clauses must specify exactly one search depth which they are ordering by')
+    const searchDepth = parsedTag.searchDepths[0];
+    if (searchDepth == 0)
+        return `n.id = ${tag.id}`;
+    if (searchDepth == 1)
+        return `(SELECT ${buildTagDataExpression(parsedTag, 'nt')} ` +
+            `FROM NoteTag nt ` +
+            `WHERE nt.noteId = n.id AND nt.tagId = ${tag.id})`;
+    if (searchDepth == 2)
+        return `(SELECT ${buildTagDataExpression(parsedTag, 'nt1')} ` +
+            `FROM NoteTag nt1 INNER JOIN NoteTag nt2 ON nt2.noteId = nt1.tagId ` +
+            `WHERE nt1.noteId = n.id AND nt2.tagId = ${tag.id}`
+}
+
+
+/**
+ * A very light wrapper around buildTagDataExpression. Just makes sure that tag data filtering is AND'ed onto the rest of the filter
+ */
+function buildTagDataWhereExpression(parsedTag: ParsedTag, noteTagsAlias: string): string {
+    let output = buildTagDataExpression(parsedTag, noteTagsAlias);
+    if (output != '')
+        output = ` AND (${output})`;
+    return output;
+}
+
+
+/**
+ * Takes in a parsed tag and generates SQL to query the jsonb data attached to it
+ */
+function buildTagDataExpression(parsedTag: ParsedTag, noteTagsAlias: string): string {
+    if (!parsedTag.filter)
+        return '';
+    let output = parsedTag.filter.pattern;
+    for (let i = 0; i < parsedTag.filter.exps.length; i++) {
+        const parts = parsedTag.filter.exps[i].split('.').map(x => `'${x}'`);
+        let exp = 'data';
+        for (let i = 0; i < parts.length; i++) {
+            if (i + 1 == parts.length)
+                exp += '->>';
+            else
+                exp += '->';
+            exp += parts[i];
+        }
+        output = output.replace(`{exp${i}}`, `${noteTagsAlias}.${exp}`);
+    }
+    return output;
+}
+
+
+/**
+ * Logic for processing literals added by NotuQL for the purposes of being slightly more cross-platform
+ */
+function processLiterals(query: string) {
+    {
+        while (query.includes('{Now}'))
+            query = query.replace('{Now}', 'NOW()');
+    }
+    {
+        while (query.includes('{Today}'))
+            query = query.replace('{Today}', 'CURRENT_DATE');
+    }
+    {
+        while (query.includes('{Yesterday}'))
+            query = query.replace('{Yesterday}', `(CURRENT_DATE - INTERVAL'1d')`);
+    }
+    {
+        while (query.includes('{Tomorrow}'))
+            query = query.replace('{Tomorrow}', `(CURRENT_DATE + INTERVAL'1d')`);
+    }
+    {
+        while (query.includes('{True}'))
+            query = query.replace('{True}', 'TRUE');
+    }
+    {
+        while (query.includes('{False}'))
+            query = query.replace('{False}', 'FALSE');
+    }
+    return query;
 }

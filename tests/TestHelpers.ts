@@ -1,4 +1,4 @@
-import { Note, Space, Attr, Tag, NotuHttpCacheFetcher } from 'notu';
+import { Note, Space, Tag, NotuHttpCacheFetcher } from 'notu';
 
 export function newNote(text?: string, id: number = null): Note {
     const output = new Note(text);
@@ -8,12 +8,6 @@ export function newNote(text?: string, id: number = null): Note {
 
 export function newSpace(name?: string, id: number = null): Space {
     const output = new Space(name);
-    output.id = id;
-    return output;
-}
-
-export function newAttr(name?: string, id: number = null): Attr {
-    const output = new Attr(name);
     output.id = id;
     return output;
 }
@@ -36,12 +30,6 @@ export function testCacheFetcher(): NotuHttpCacheFetcher {
         { id: 3, state: 'CLEAN', name: 'Tag 3', spaceId: 1, color: '#FF0000', isPublic: false, links: [] },
         { id: 4, state: 'CLEAN', name: 'Tag 4', spaceId: 2, color: '#FF0000', isPublic: false, links: [] }
     ];
-    const attrsData = [
-        { id: 1, state: 'CLEAN', name: 'Attr 1', description: 'Text attr', type: 'TEXT', spaceId: 1 },
-        { id: 2, state: 'CLEAN', name: 'Attr 2', description: 'Number attr', type: 'NUMBER', spaceId: 1 },
-        { id: 3, state: 'CLEAN', name: 'Attr 3', description: 'Boolean attr', type: 'BOOLEAN', spaceId: 1 },
-        { id: 4, state: 'CLEAN', name: 'Attr 4', description: 'Date attr', type: 'DATE', spaceId: 1 }
-    ];
 
     return new NotuHttpCacheFetcher(
         'abc',
@@ -50,8 +38,6 @@ export function testCacheFetcher(): NotuHttpCacheFetcher {
             let data = [];
             if (input.toString().includes('/spaces'))
                 data = spacesData;
-            else if (input.toString().includes('/attrs'))
-                data = attrsData;
             else if (input.toString().includes('/tags'))
                 data = tagsData;
 
