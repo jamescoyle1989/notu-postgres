@@ -260,7 +260,7 @@ export class NotuPostgresClient {
         }
         else if (tag.isDeleted) {
             await connection.run(
-                'DELETE Tag WHERE id = $1',
+                'DELETE FROM Tag WHERE id = $1',
                 tag.id
             );
         }
