@@ -7,9 +7,14 @@ export function buildNewNotesQuery(
 ): string {
     let output = 'SELECT n.id, n.spaceId, n.text, n.date FROM Note n LEFT JOIN Tag t ON n.id = t.id';
 
-    output += ` WHERE n.spaceId = ${spaceId}`;
-    if (!!parsedQuery.where)
-        output += ` AND (${buildNewNotesQueryPortion(parsedQuery, spaceId, cache, 'where')})`;
+    if (!!parsedQuery.where || !!spaceId) {
+        let whereClauses: Array<string> = [];
+        if (!!spaceId)
+            whereClauses.push(`n.spaceId = ${spaceId}`);
+        if (!!parsedQuery.where)
+            whereClauses.push(`(${buildNewNotesQueryPortion(parsedQuery, spaceId, cache, 'where')})`);
+        output += ` WHERE ${whereClauses.join(' AND ')}`
+    }
     if (!!parsedQuery.order)
         output += ` ORDER BY ${buildNewNotesQueryPortion(parsedQuery, spaceId, cache, 'order')}`;
 
@@ -46,10 +51,19 @@ function buildNewNotesQueryPortion(
         if (!output.includes(`{tag${i}}`))
             continue;
         const parsedTag = parsedQuery.tags[i];
-        const tag = cache.getTagByName(
-            parsedTag.name,
-            !!parsedTag.space ? cache.getSpaceByName(parsedTag.space).id : spaceId
-        );
+        let tag: Tag = null;
+        if (!!parsedTag.space) {
+            tag = cache.getTagByName(
+                parsedTag.name,
+                !!parsedTag.space ? cache.getSpaceByName(parsedTag.space).id : spaceId
+            );
+        }
+        else {
+            const tags = cache.getTagsByName(parsedTag.name);
+            if (tags.length > 1)
+                throw Error(`Unable to uniquely identify tag '${parsedTag.name}', please include space name`);
+            tag = tags[0];
+        }
         output = output.replace(`{tag${i}}`, tagBuilder(parsedTag, tag));
     }
 

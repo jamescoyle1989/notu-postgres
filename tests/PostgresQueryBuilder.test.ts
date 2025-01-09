@@ -201,3 +201,32 @@ test('ordering by date property works correctly', async () => {
         `ORDER BY (SELECT (nt.data->>'date')::date FROM NoteTag nt WHERE nt.noteId = n.id AND nt.tagId = 1) DESC;`
     );
 });
+
+test('buildNotesQuery can generate search across all spaces', async () => {
+    const query = new ParsedQuery();
+    query.where = '{tag0} AND {tag1}';
+    query.tags.push((() => {
+        const tag = new ParsedTag();
+        tag.name = 'Tag 1';
+        tag.space = null;
+        tag.searchDepths = [1];
+        return tag;
+    })());
+    query.tags.push((() => {
+        const tag = new ParsedTag();
+        tag.name = 'Tag 2';
+        tag.space = 'Space 2';
+        tag.searchDepths = [1];
+        return tag;
+    })());
+
+    expect(buildNewNotesQuery(query, null, await newNotuCache()))
+        .toBe(
+            'SELECT n.id, n.spaceId, n.text, n.date ' +
+            'FROM Note n LEFT JOIN Tag t ON n.id = t.id ' +
+            'WHERE (' +
+                'EXISTS(SELECT 1 FROM NoteTag nt WHERE nt.noteId = n.id AND nt.tagId = 1) AND ' +
+                'EXISTS(SELECT 1 FROM NoteTag nt WHERE nt.noteId = n.id AND nt.tagId = 2)' +
+            ');'
+        );
+});
