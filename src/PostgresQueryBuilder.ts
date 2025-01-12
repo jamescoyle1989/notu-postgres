@@ -58,6 +58,8 @@ function buildNewNotesQueryPortion(
                 !!parsedTag.space ? cache.getSpaceByName(parsedTag.space).id : spaceId
             );
         }
+        else if (!!spaceId)
+            tag = cache.getTagByName(parsedTag.name, spaceId);
         else {
             const tags = cache.getTagsByName(parsedTag.name);
             if (tags.length > 1)

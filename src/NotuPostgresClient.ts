@@ -132,7 +132,7 @@ export class NotuPostgresClient {
         if (space instanceof Space)
             space = space.id;
 
-        query = this._prepareQuery(query, space).substring(query.indexOf(' FROM '));
+        query = this._prepareQuery(query, space);
 
         return await this._getNotesFromQuery(query);
     }
