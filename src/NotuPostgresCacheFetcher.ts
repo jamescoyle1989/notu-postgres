@@ -34,14 +34,14 @@ export class NotuPostgresCacheFetcher {
         const connection = await this._connectionFactory();
         try {
             const tags = (await connection
-                .run('SELECT n.id, t.name, n.spaceId, t.color, t.isPublic FROM Note n INNER JOIN Tag t ON n.id = t.id;'))
+                .run('SELECT n.id, t.name, n.spaceId, t.color, t.availability FROM Note n INNER JOIN Tag t ON n.id = t.id;'))
                 .rows.map(x => ({
                     state: 'CLEAN',
                     id: x[0],
                     name: x[1],
                     spaceId: x[2],
                     color: mapIntToColor(x[3]),
-                    isPublic: x[4],
+                    availability: x[4],
                     links: []
                 }));
             const tagsMap = new Map<number, any>();

@@ -84,6 +84,12 @@ export class NotuPostgresClient {
                 await connection.run(`DROP TABLE NoteAttr;`);
                 await connection.run(`DROP TABLE Attr;`);
             }
+
+            if (!(await connection.run(`SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'tag' AND column_name = 'availability');`)).rows[0][0]) {
+                await connection.run(`ALTER TABLE Tag ADD COLUMN availability INT NOT NULL DEFAULT 0;`);
+                await connection.run(`UPDATE Tag SET availability = 2 WHERE isPublic = true;`);
+                await connection.run(`ALTER TABLE Tag DROP COLUMN isPublic;`);
+            }
     
             return Promise.resolve();
         }
@@ -235,15 +241,15 @@ export class NotuPostgresClient {
     private async _saveTag(tag: Tag, connection: PostgresConnection): Promise<void> {
         if (tag.isNew) {
             await connection.run(
-                'INSERT INTO Tag (id, name, color, isPublic) VALUES ($1, $2, $3, $4);',
-                tag.id, tag.name, mapColorToInt(tag.color), tag.isPublic ? 1 : 0
+                'INSERT INTO Tag (id, name, color, availability) VALUES ($1, $2, $3, $4);',
+                tag.id, tag.name, mapColorToInt(tag.color), tag.availability
             );
             tag.clean();
         }
         else if (tag.isDirty) {
             await connection.run(
-                'UPDATE Tag SET name = $1, color = $2, isPublic = $3 WHERE id = $4;',
-                tag.name, mapColorToInt(tag.color), tag.isPublic ? 1 : 0, tag.id
+                'UPDATE Tag SET name = $1, color = $2, availability = $3 WHERE id = $4;',
+                tag.name, mapColorToInt(tag.color), tag.availability, tag.id
             );
             tag.clean();
         }
