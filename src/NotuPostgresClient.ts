@@ -293,8 +293,20 @@ export class NotuPostgresClient {
     }
 
 
-    customJob(name: string, data: any): Promise<any> {
-        return Promise.resolve({});
+    async customJob(name: string, data: any): Promise<any> {
+        if (name == 'Raw SQL') {
+            const connection = await this._connectionFactory();
+            try {
+                if (typeof(data) == 'string')
+                    return await connection.run(data);
+                else if (typeof(data) == 'function')
+                    return await data(connection);
+            }
+            finally {
+                connection.close();
+            }
+        }
+        throw Error(`Unrecognised custom job '${name}'`)
     }
 
 
